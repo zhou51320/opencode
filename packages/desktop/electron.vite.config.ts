@@ -4,6 +4,8 @@ import appPlugin from "@opencode-ai/app/vite"
 import * as fs from "node:fs/promises"
 
 const OPENCODE_SERVER_DIST = "../opencode/dist/node"
+const desktopTargetPlatform = process.env.OPENCODE_DESKTOP_TARGET_PLATFORM ?? process.platform
+const desktopTargetArch = process.env.OPENCODE_DESKTOP_TARGET_ARCH ?? process.arch
 
 const channel = (() => {
   const raw = process.env.OPENCODE_CHANNEL
@@ -12,7 +14,7 @@ const channel = (() => {
   return "dev"
 })()
 
-const nodePtyPkg = `@lydell/node-pty-${process.platform}-${process.arch}`
+const nodePtyPkg = `@lydell/node-pty-${desktopTargetPlatform}-${desktopTargetArch}`
 
 const sentry =
   process.env.SENTRY_AUTH_TOKEN && process.env.SENTRY_ORG && process.env.SENTRY_PROJECT

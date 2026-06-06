@@ -15,10 +15,13 @@
     "dev": "electron-vite dev",
     "prebuild": "bun ./scripts/prebuild.ts",
     "build": "electron-vite build",
+    "build:win7": "bun ./scripts/build-win7.ts",
     "preview": "electron-vite preview",
     "package": "electron-builder --config electron-builder.config.ts",
     "package:mac": "electron-builder --mac --config electron-builder.config.ts",
     "package:win": "electron-builder --win --config electron-builder.config.ts",
+    "package:win7": "bun ./scripts/package-win7.ts",
+    "report:win7-runtime": "bun ./scripts/report-win7-runtime.ts",
     "package:linux": "electron-builder --linux --config electron-builder.config.ts",
     "native:build": "bun install --cwd native"
   },

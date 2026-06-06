@@ -8,6 +8,9 @@ import type { Configuration } from "electron-builder"
 const execFileAsync = promisify(execFile)
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const signScript = path.join(rootDir, "script", "sign-windows.ps1")
+const win7Build = process.env.OPENCODE_DESKTOP_WIN7 === "1"
+const win7ElectronVersion = win7Build ? (process.env.OPENCODE_ELECTRON_VERSION ?? "40.2.0") : undefined
+const win7ElectronDist = win7Build && process.env.OPENCODE_ELECTRON_DIST ? path.resolve(process.env.OPENCODE_ELECTRON_DIST) : undefined
 
 async function signWindows(configuration: { path: string }) {
   if (process.platform !== "win32") return
@@ -27,9 +30,11 @@ const channel = (() => {
 })()
 
 const getBase = (): Configuration => ({
-  artifactName: "opencode-desktop-${os}-${arch}.${ext}",
+  ...(win7ElectronVersion ? { electronVersion: win7ElectronVersion } : {}),
+  ...(win7ElectronDist ? { electronDist: win7ElectronDist } : {}),
+  artifactName: win7Build ? "opencode-desktop-win7-${os}-${arch}.${ext}" : "opencode-desktop-${os}-${arch}.${ext}",
   directories: {
-    output: "dist",
+    output: win7Build ? "dist/win7" : "dist",
     buildResources: "resources",
   },
   files: ["out/**/*", "resources/**/*"],
@@ -59,6 +64,7 @@ const getBase = (): Configuration => ({
   },
   win: {
     icon: `resources/icons/icon.ico`,
+    signAndEditExecutable: !win7Build,
     signtoolOptions: {
       sign: signWindows,
     },

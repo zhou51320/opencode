@@ -1,0 +1,70 @@
+name: win7-desktop-prebuilt
+
+on:
+  push:
+  workflow_dispatch:
+
+concurrency:
+  group: win7-desktop-prebuilt-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  ELECTRON_WIN7_VERSION: "v40.2.0"
+  ELECTRON_WIN7_DIST_URL: "https://github.com/e3kskoy7wqk/Electron-for-windows-7/releases/download/v40.2.0/dist.zip"
+  ELECTRON_WIN7_DIST_SHA256: "ed4ebb022624ae38f764fcfc1dc1ce30fe2145298975d4c90e8d95412deeadea"
+
+jobs:
+  package-opencode-win7:
+    name: package opencode with prebuilt Win7 Electron
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout opencode repository
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Install Win32 optional dependencies
+        run: bun install --os=win32 --cpu=x64
+
+      - name: Download prebuilt Win7 Electron runtime
+        run: |
+          mkdir -p "$RUNNER_TEMP/electron-win7-runtime"
+          curl --fail --location --retry 5 --retry-delay 5 \
+            --output "$RUNNER_TEMP/electron-win7-runtime.zip" \
+            "$ELECTRON_WIN7_DIST_URL"
+          echo "$ELECTRON_WIN7_DIST_SHA256  $RUNNER_TEMP/electron-win7-runtime.zip" | sha256sum --check -
+          unzip -q "$RUNNER_TEMP/electron-win7-runtime.zip" -d "$RUNNER_TEMP/electron-win7-runtime"
+          test -f "$RUNNER_TEMP/electron-win7-runtime/electron.exe"
+          test -f "$RUNNER_TEMP/electron-win7-runtime/version"
+
+      - name: Build Win7 desktop assets
+        working-directory: packages/desktop
+        run: bun run build:win7
+
+      - name: Package Win7 desktop
+        working-directory: packages/desktop
+        run: bun run package:win7
+        env:
+          OPENCODE_ELECTRON_DIST: ${{ runner.temp }}/electron-win7-runtime
+
+      - name: Write runtime provenance report
+        working-directory: packages/desktop
+        run: |
+          bun run report:win7-runtime "$OPENCODE_ELECTRON_DIST" --out dist/win7/prebuilt-runtime
+          bun run report:win7-runtime dist/win7/win-unpacked --compare "$OPENCODE_ELECTRON_DIST" --out dist/win7/prebuilt-runtime-comparison
+        env:
+          OPENCODE_ELECTRON_DIST: ${{ runner.temp }}/electron-win7-runtime
+
+      - name: Upload Win7 desktop artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: opencode-desktop-win7-prebuilt-electron
+          path: |
+            packages/desktop/dist/win7/win-unpacked/**
+            packages/desktop/dist/win7/*.json
+            packages/desktop/dist/win7/*.md
+          if-no-files-found: error
