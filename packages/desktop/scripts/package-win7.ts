@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, statSync } from "node:fs"
+import { createHash } from "node:crypto"
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 
@@ -30,6 +31,7 @@ const exitCode = await Bun.spawn({
 
 if (exitCode !== 0) process.exit(exitCode)
 
+await applyOpencodeIcon()
 await patchWin7Asar()
 await verifyWin7Package()
 process.exit(0)
@@ -76,6 +78,25 @@ async function patchWin7Asar() {
   cpSync(`${output}.unpacked`, unpacked, { recursive: true })
   rmSync(work, { recursive: true, force: true })
   console.log("Patched app.asar with Win32 native package entries")
+}
+
+async function applyOpencodeIcon() {
+  const { Data, NtExecutable, NtExecutableResource, Resource } = await import("resedit")
+  const exe = path.resolve("dist/win7/win-unpacked/OpenCode.exe")
+  const icon = path.resolve("resources/icons/icon.ico")
+  const parsed = NtExecutable.from(readFileSync(exe), { ignoreCert: true })
+  const resources = NtExecutableResource.from(parsed)
+  const icons = Data.IconFile.from(readFileSync(icon)).icons.map((item) => item.data)
+  const groups = Resource.IconGroupEntry.fromEntries(resources.entries)
+  if (!groups.length) throw new Error(`Win7 icon patch failed; no icon group found in ${exe}`)
+
+  for (const group of groups) {
+    Resource.IconGroupEntry.replaceIconsForResource(resources.entries, group.id, group.lang, icons)
+  }
+
+  resources.outputResource(parsed)
+  writeFileSync(exe, Buffer.from(parsed.generate()))
+  console.log(`Applied OpenCode icon to ${exe}`)
 }
 
 function copyPackageToAsarSource(source: string, unpacked: string, scope: string, name: string) {
@@ -130,6 +151,8 @@ async function verifyWin7Package() {
     }
   }
 
+  await verifyOpencodeIcon(exe, path.resolve("resources/icons/icon.ico"))
+
   const asarEntries = await asarList(archive)
   for (const item of [
     "/node_modules/@lydell/node-pty-win32-x64/package.json",
@@ -162,6 +185,29 @@ async function verifyWin7Package() {
   }
 
   console.log(`Verified Win7 desktop package at ${app}`)
+}
+
+async function verifyOpencodeIcon(exe: string, icon: string) {
+  const { Data, NtExecutable, NtExecutableResource, Resource } = await import("resedit")
+  const resources = NtExecutableResource.from(NtExecutable.from(readFileSync(exe), { ignoreCert: true }))
+  const expected = Data.IconFile.from(readFileSync(icon)).icons.map((item) => iconHash(item.data)).sort()
+  const groups = Resource.IconGroupEntry.fromEntries(resources.entries)
+
+  if (expected.length === 0) throw new Error(`Win7 package verification failed; icon file has no entries: ${icon}`)
+  if (groups.length === 0) throw new Error("Win7 package verification failed; OpenCode.exe has no icon group resources")
+
+  for (const group of groups) {
+    const actual = group.getIconItemsFromEntries(resources.entries).map(iconHash).sort()
+    if (expected.join(",") !== actual.join(",")) {
+      throw new Error("Win7 package verification failed; OpenCode.exe icon resources do not match resources/icons/icon.ico")
+    }
+  }
+}
+
+function iconHash(icon: { isRaw(): boolean; bin: ArrayBuffer; generate(): ArrayBuffer }) {
+  return createHash("sha256")
+    .update(new Uint8Array(icon.isRaw() ? icon.bin : icon.generate()))
+    .digest("hex")
 }
 
 async function asarList(archive: string) {
